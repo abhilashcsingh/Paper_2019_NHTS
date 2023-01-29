@@ -1,0 +1,266 @@
+new;
+cls;
+library maxlik;
+maxset;
+
+/* Non-linear in parameters MNL Estimation of Non-maintenance Shopping Destination Choice, Fall 2004 */
+/* Using Mobidrive data */
+/* data for this program should be in case-alt format. That is, each trip
+production should be replicated as many times as number of candidate
+attraction-end zones; see data preparation and cleaning chapter in report.
+If there are 7 alternatives sampled for each trip production, create seven
+records for each production and append appropriate zonal attributes, and
+impedance between production zone and candidate attraction-end zone to
+each record.   */
+
+/*****************************************************************************
+Global Variable Definition and Settings
+*****************************************************************************/
+
+clearg z,p,_dd,_mlparnm,_outa,_dmsave,flagair,flagbus,flagtran,flagcar,
+    _intordl, rrr,ivname,ivn,ivt,dt,iv,VARNAM,vaindx,b;
+clearg keepy,lst,first,keepx,keepcase,keepalt,keeptav,keepwt,keepwav;
+clearg spath,bcoef,keepsz,_start,_outa;
+
+/******************************************************************************
+Main modification area for different runs
+******************************************************************************/
+
+/* data matrix for analysis */
+
+dataset = "C:\\gauss18\\NHTS\\foodnamed";
+
+/* number of alternatives in universal choice set */
+
+nalts = 50;
+
+/* Number of choice occasions in data */
+
+nobser= 1005;
+
+/* total number of rows in data */
+
+sumalts = 50250;
+
+/* if printout of output is required, _outa=1 */
+
+_outa = 1;
+
+if _outa;
+    output file = C:\gauss18\NHTS\NLMNLspecification.txt on;
+endif;
+
+/* if there are weights, specify weight variable on RHS below; if no
+weights, create a variable labeled "uno" which takes a value of 1 for
+all records */
+
+{ weight,wtind } = indices(dataset,"uno");
+
+/*****************************************************************************
+Specification of variables area
+*****************************************************************************/
+
+// "IV"
+/* definition of non-size independent variables; name in parenthesis without
+commas between variables  */
+
+// "IVSIZE"
+/* definition of size dependent variables; arranged so that coefficient
+on first size variable is one for identification; number of size variables
+should be greater than one for this program; if only one size variable,
+use standard MNL software */
+
+@ last best spec: save under @
+//  let iv = { dist  pdens1 emden1      };
+//  let ivsize = { Area    entdv    rtld   	 };
+
+let iv = { dist  };
+let ivsize = { Area   rtld    entdv   };
+
+//b = 0.01|0.01|-0.01|-0.01|-0.01|-0.01|0.3|0|0.01|0.01 ;
+
+
+//  Area	entdv	rtld    resdd	edudv	servd	govdv	trand   comdv
+
+
+//JOE: pdens101	emden101	servd01	rtld01	Area01	whlst01	sprct01	grocst01
+
+
+
+/* specify dependent variable in RHS below */
+
+{ chosen,dvind } = indices(dataset,"chosen");
+
+/* specify variable representing cases in RHS variable below; current
+datasets use the variable "case" for such a variable, as shown below.
+This variable takes the same value for all records corresponding to
+the same trip production. Trip productions in the data should be
+consecutive (with no gaps in numbering) and in ascending order.
+The various trip records correspond to alternative candidate
+attraction-ends that an individual can choose from */
+
+{ case,caseind } = indices(dataset,"caseid");
+
+/* identify variable representing alternatives below; current datasets use the
+variable "alt" for this purpose. This variable varies from 1 to number of
+alternatives available for each trip production - generally, the number
+of alts. will be the same across all trip productions and will be equal
+to "nalts". The values of he "alt" variable should be in strictly
+ascending order for each trip production */
+
+{ alt,altind } = indices(dataset,"alt");
+
+/* put _start = 1 if providing start values, 0 otherwise */
+
+_start = 0;
+
+/* give start values if _start = 1 in b vector below */
+/* if providing start values, arrange in b vector as follows: first provide
+coefficients of non-size variables with the same dimension (and in the same
+order) as the vector of independent variables in "iv", then coefficient on
+composite size variable, and finally coefficients on individual size
+variables within logarithmic size function (in the same order as in vector
+"ivsize", except coefficient on first size variable, which is normalized to
+one; so do not provide a coefficient for the first size variable, only
+for subsequent size variables */
+
+/* The best way to obtain start values for this estimation is to estimate a
+MNL model with one size variable in logarithm form. Use the MNL estimates
+and put zero values for the start coefficients of additional size
+measures */
+
+
+if _start;
+    load path=C:\software\GAUSS18\NHTS\NonMaint\;
+    load bmnl,bmnl1;
+    b = bmnl[1:rows(bmnl)-1]|-2;
+    b = bmnl1;
+endif;
+
+/* provide names of coefficients estimated; first iv variables, next
+composite size variable, and finally individual size parameters estimated */
+
+{ ivname,indvind } = indices(dataset,iv');
+{ ivsname,ivszind } = indices(dataset,ivsize');
+
+parnam = ivname|"CompSize"|ivsname;
+/******************************************************************************
+Actual program area begins: Should not need to change anything below
+******************************************************************************/
+
+
+nvar = rows(iv');
+nvarsz = rows(ivsize');
+
+
+
+if _start == 0;
+    //b = -0.4|-0.001|0.001|0.3|0|0.1|0.1;
+    b = zeros(nvar,1)|1|0|ones(nvarsz-1,1);
+endif;
+
+
+@
+if _start == 1;
+b = -1|-1|0|-2|-2|-2|-2;
+endif;
+@
+
+__row = 1050;
+_max_Options = { bfgs stepbt };
+_max_CovPar = 2;
+_max_ParNames = parnam;
+//_max_GradProc=&lgd;
+_max_Active = ones(nvar,1)|1|0|ones(nvarsz-1,1);
+_max_GradCheckTol = 0.0001;
+
+
+{ x,f,g,cov,retcode } = maxprt(maxlik(dataset,0,&lpr,b));
+
+print;
+print "Variance-Covariance matrix of estimated parameters:";
+print "---------------------------------------------------";
+print cov;
+
+gr = diagrv(zeros(rows(x)-1,rows(x)-1),(ones(nvar+1,1)|exp(x[nvar+3:rows(x)])));
+newse = sqrt(diag(gr'*cov[1:nvar+1 nvar+3:rows(cov),1:nvar+1 nvar+3:cols(cov)]*gr));
+newx = x[1:nvar+1]|exp(x[nvar+3:rows(x)]);
+newratio = newx./newse;
+
+maskn = 0~1~1~1~1;
+fmtn = { "-*.*s"  9 8,
+    "*.*lf" 14 4,
+    "*.*lf" 14 4,
+    "*.*lf"  9 3,
+    "*.*lf"  9 4 };
+print;
+print "Corrected parameter and Std.Err. estimates:";
+print "-------------------------------------------";
+call printfm(parnam[1:nvar+1 nvar+3:rows(parnam)]~newx~newse~newratio~2*cdfnc(abs(newratio)),maskn,fmtn);
+
+check = _max_FinalHess;
+print check;
+
+proc lpr(x,dta);
+    local nobs, nkeep, yd, yind, yszind,nucase, nualt;
+    local evin, lastinc, e1,indx, newcase, temp, allprob, ll;
+    local wt;
+    clear ll;
+    
+    yd = dta[.,dvind];
+    yind = dta[.,indvind];
+    yszind = dta[.,ivszind];
+    wt = dta[.,wtind];
+    
+    
+    /* Now find the last case in the read in of the data and keep it for the
+    next read in of data. */
+    
+    
+    evin = exp((yind * x[1:nvar]) + (((ln(yszind * (exp(x[nvar+2:rows(x)])))))
+        * x[nvar+1]));
+    e1 = (rows(dta))/nalts;
+    evin = (reshape(evin',e1,nalts))';
+    allprob = evin ./ (((sumc(evin)))');
+    allprob = vec(allprob);
+    temp = zeros(rows(allprob),1);
+    if allprob > temp;
+        allprob = ln(allprob);
+    else;
+        allprob = ln(allprob - ((allprob .<= temp) .* (allprob - 0.0001)));
+    endif;
+    ll = sumc(wt .* allprob .* yd);
+    retp(ll);
+endp;
+
+
+
+proc lgd(x,dta);
+    
+    local nobs, nkeep, yd, yind, yszind,nucase, nualt;
+    local evin, lastinc, indx, newcase, temp, allprob, grad1,grad;
+    local wt,e1;
+    clear grad;
+    
+    
+    yd = dta[.,dvind];
+    yind = dta[.,indvind];
+    yszind = dta[.,ivszind];
+    wt = dta[.,wtind];
+    
+    evin = exp((yind * x[1:nvar]) + (((ln(yszind * (exp(x[nvar+2:rows(x)])))))
+        * x[nvar+1]));
+    e1 = (rows(dta))/nalts;
+    evin = (reshape(evin',e1,nalts))';
+    allprob = evin ./ (((sumc(evin)))');
+    allprob = vec(allprob);
+    
+    /* Reshape allprob as a vector compatible with "yd" and "yind" */
+    
+    grad1 = (x[nvar+1]./(yszind * exp(x[nvar+2:rows(x)]))).*
+        yszind[.,1:cols(yszind)].*(exp(x[nvar+2:rows(x)]))';
+    grad = wt .* (yd - allprob) .*
+        (yind~(ln(yszind * exp(x[nvar+2:rows(x)])))~grad1);
+    retp(grad);
+endp;
+
